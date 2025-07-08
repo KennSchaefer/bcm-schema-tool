@@ -1,17 +1,18 @@
 // File: utils/scraper.js
-import fetch from 'node-fetch';
-
 /**
- * Fetches and returns the raw HTML of a given URL.
- * (Pulled via HTTP rather than Puppeteer.)
- *
+ * Fetches and returns the raw HTML of a given URL using the built-in fetch.
  * @param {string} url
- * @returns {Promise<string>}
+ * @returns {Promise<string>} HTML content
  */
 export async function scrapePage(url) {
-  const resp = await fetch(url, { timeout: 30000 });
-  if (!resp.ok) {
-    throw new Error(`Fetch failed with status ${resp.status}`);
+  try {
+    const response = await fetch(url)
+    if (!response.ok) {
+      throw new Error(`Failed to fetch ${url}: ${response.status}`)
+    }
+    return await response.text()
+  } catch (err) {
+    console.error(`scrapePage error for ${url}:`, err)
+    throw err
   }
-  return await resp.text();
 }

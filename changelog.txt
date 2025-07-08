@@ -1,0 +1,18 @@
+I’m working on a Next.js-based Schema Markup Creator for Beeby Clark + Meyler. The full code is in GitHub here:
+https://github.com/KennSchaefer/bcm-schema-tool
+
+We have two API endpoints:
+
+/api/recommend: scrapes (or fetches) a page and returns the top 5 schema.org types via OpenAI.
+
+/api/generate: takes a URL and selected schema type, then returns ready-to-use JSON-LD via OpenAI.
+
+The app is deployed on Cloud Run at:
+https://bcm-schema-tool-418073361654.us-central1.run.app/
+
+We’ve embedded it via an <iframe> on HubSpot at:
+https://www.beebyclarkmeyler.com/schema-markup-generator
+
+Locally, our pages/index.js handles the UI with React state, fetch calls, loading indicators, and displays recommendations and generated JSON-LD.
+
+

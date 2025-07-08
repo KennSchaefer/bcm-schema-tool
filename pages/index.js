@@ -1,119 +1,190 @@
-import React from 'react';
+// File: pages/index.js (client-side component)
+import React, { useState, useEffect } from 'react'
+import axios from 'axios'
 
 export default function Home() {
-  const [url, setUrl] = React.useState('https://www.beebyclarkmeyler.com/');
-  const [loading, setLoading] = React.useState(false);
-  const [recommendations, setRecommendations] = React.useState(null);
-  const [error, setError] = React.useState(null);
-  const [schemaResult, setSchemaResult] = React.useState(null);
-  const [generateLoading, setGenerateLoading] = React.useState(false);
-  const [selectedType, setSelectedType] = React.useState(null);
+  const [mode, setMode] = useState('url')
+  const [sitemapUrls, setSitemapUrls] = useState([])
+  const [selectedUrl, setSelectedUrl] = useState('')
+  const [customUrl, setCustomUrl] = useState('')
+  const [filterTerm, setFilterTerm] = useState('')
+  const [pastedContent, setPastedContent] = useState('')
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
-    setRecommendations(null);
-    setSchemaResult(null);
-    try {
-      console.log('Requesting recommendations for URL:', url);
-      const res = await fetch('/api/recommend', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url }),
-      });
-      if (!res.ok) throw new Error(`API returned ${res.status}`);
-      const data = await res.json();
-      console.log('Received recommendations:', data.recommendations);
-      setRecommendations(data.recommendations);
-    } catch (err) {
-      console.error('Error fetching recommendations:', err);
-      setError(err.message || 'Unknown error');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const [recommendations, setRecommendations] = useState([])
+  const [selectedType, setSelectedType] = useState('')
+  const [generatedJsonLd, setGeneratedJsonLd] = useState(null)
 
-  const handleGenerate = async (type) => {
-    console.log('Generate button clicked for type:', type);
-    setGenerateLoading(true);
-    setSelectedType(type);
-    setSchemaResult(null);
-    try {
-      const res = await fetch('/api/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url, type }),
-      });
-      console.log('Generate API call status:', res.status);
-      if (!res.ok) throw new Error(`API returned ${res.status}`);
-      const data = await res.json();
-      console.log('Received schema:', data.schema);
-      setSchemaResult(data.schema);
-    } catch (err) {
-      console.error('Error generating schema:', err);
-      setError(err.message || 'Error generating schema');
-    } finally {
-      setGenerateLoading(false);
+  const [loadingSitemap, setLoadingSitemap] = useState(false)
+  const [loadingRecommend, setLoadingRecommend] = useState(false)
+  const [loadingGenerate, setLoadingGenerate] = useState(false)
+
+  // Fetch sitemap once when in URL mode
+  useEffect(() => {
+    if (mode === 'url' && sitemapUrls.length === 0) {
+      setLoadingSitemap(true)
+      axios.get('/api/sitemap')
+        .then(res => setSitemapUrls(res.data.urls || []))
+        .catch(() => alert('Unable to load sitemap.'))
+        .finally(() => setLoadingSitemap(false))
     }
-  };
+  }, [mode])
+
+  const handleSubmit = async e => {
+    e.preventDefault()
+    const url = mode === 'url' ? (customUrl || selectedUrl) : null
+    if (mode === 'url' && !url) return alert('Please select or enter a URL.')
+    if (mode === 'content' && !pastedContent.trim()) return alert('Please paste content.')
+
+    setLoadingRecommend(true)
+    setRecommendations([])
+    setSelectedType('')
+    setGeneratedJsonLd(null)
+
+    try {
+      const payload = mode === 'url' ? { url } : { html: pastedContent }
+      const res = await axios.post('/api/recommend', payload)
+      setRecommendations(res.data.types || [])
+    } catch (err) {
+      console.error('Recommend error:', err)
+      alert('Failed to fetch recommendations. See console.')
+    } finally {
+      setLoadingRecommend(false)
+    }
+  }
+
+  const handleGenerate = async () => {
+    if (!selectedType) return alert('Please select a schema type.')
+    const url = mode === 'url' ? (customUrl || selectedUrl) : null
+
+    setLoadingGenerate(true)
+    setGeneratedJsonLd(null)
+
+    try {
+      const payload = mode === 'url'
+        ? { url, type: selectedType }
+        : { html: pastedContent, type: selectedType }
+      const res = await axios.post('/api/generate', payload)
+      // direct assignment, let JSON.stringify handle formatting
+      setGeneratedJsonLd(res.data.jsonLd)
+    } catch (err) {
+      console.error('Generate error:', err)
+      alert('Failed to generate JSON-LD. See console.')
+    } finally {
+      setLoadingGenerate(false)
+    }
+  }
+
+  const handleClear = () => {
+    setMode('url')
+    setFilterTerm('')
+    setSelectedUrl('')
+    setCustomUrl('')
+    setPastedContent('')
+    setRecommendations([])
+    setSelectedType('')
+    setGeneratedJsonLd(null)
+  }
 
   return (
-    <div className="max-w-3xl mx-auto p-6">
-      <h1 className="text-2xl font-bold mb-4">BCM Schema Markup Creator</h1>
+    <div style={{ maxWidth: 800, margin: '0 auto', padding: '1rem', fontFamily: 'sans-serif' }}>
+      <h1 style={{ fontSize: '1.5rem', fontWeight: 'bold', marginBottom: '1rem' }}>Schema Markup Creator</h1>
 
-      <form onSubmit={handleSubmit} className="mb-6">
-        <label htmlFor="url" className="block mb-2 font-medium">Enter URL:</label>
-        <input
-          id="url"
-          type="url"
-          className="w-full p-2 border rounded mb-2"
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          required
-        />
-        <button
-          type="submit"
-          className="px-4 py-2 bg-blue-600 text-white rounded"
-          disabled={loading}
-        >
-          {loading ? 'Loading…' : 'Get Recommendations'}
+      {/* Mode toggle */}
+      <div style={{ marginBottom: '1rem' }}>
+        <label style={{ marginRight: '1rem' }}>
+          <input type="radio" value="url" checked={mode==='url'} onChange={()=>setMode('url')} /> Use URL
+        </label>
+        <label>
+          <input type="radio" value="content" checked={mode==='content'} onChange={()=>setMode('content')} /> Paste Content
+        </label>
+      </div>
+
+      {/* Input form */}
+      <form onSubmit={handleSubmit} style={{ marginBottom: '1rem' }}>
+        {mode==='url' ? (
+          <>
+            <div style={{ display:'flex', gap:'0.5rem', marginBottom:'0.5rem' }}>
+              <input
+                type="text"
+                placeholder="Filter sitemap URLs..."
+                value={filterTerm}
+                onChange={e=>setFilterTerm(e.target.value)}
+                style={{ flex:1, padding:'0.5rem', border:'1px solid #ccc', borderRadius:'4px' }}
+              />
+              <select
+                value={selectedUrl}
+                onChange={e=>setSelectedUrl(e.target.value)}
+                style={{ flex:2, padding:'0.5rem', border:'1px solid #ccc', borderRadius:'4px' }}
+              >
+                <option value="">-- Select URL --</option>
+                {sitemapUrls
+                  .filter(u => u.toLowerCase().includes(filterTerm.toLowerCase()))
+                  .map(u => <option key={u} value={u}>{u}</option>)}
+              </select>
+            </div>
+            <input
+              type="url"
+              placeholder="Or enter a different URL"
+              value={customUrl}
+              onChange={e=>setCustomUrl(e.target.value)}
+              style={{ width:'100%', padding:'0.5rem', border:'1px solid #ccc', borderRadius:'4px', marginBottom:'0.5rem' }}
+            />
+          </>
+        ) : (
+          <textarea
+            placeholder="Paste your HTML content..."
+            value={pastedContent}
+            onChange={e=>setPastedContent(e.target.value)}
+            style={{ width:'100%', height:'200px', padding:'0.5rem', border:'1px solid #ccc', borderRadius:'4px', marginBottom:'0.5rem' }}
+          />
+        )}
+        <button type="submit" disabled={loadingRecommend} style={{ padding:'0.5rem 1rem', backgroundColor:'#1D4ED8', color:'#fff', border:'none', borderRadius:'4px', cursor:'pointer' }}>
+          {loadingRecommend?'Loading…':'Get Recommendations'}
+        </button>
+        <button type="button" onClick={handleClear} style={{ marginLeft:'1rem', padding:'0.5rem 1rem', backgroundColor:'#EF4444', color:'#fff', border:'none', borderRadius:'4px', cursor:'pointer' }}>
+          Clear
         </button>
       </form>
 
-      {loading && <p className="text-blue-600 font-medium mb-4">Working on it…</p>}
-      {error && <p className="text-red-600 mb-4">Error: {error}</p>}
-
-      {recommendations && (
-        <div className="mb-6">
-          <h2 className="text-xl font-semibold mb-2">Recommended Schema Types</h2>
-          <ul className="space-y-4">
-            {recommendations.map((rec, i) => (
-              <li key={i} className="p-4 border rounded flex justify-between items-start">
-                <div>
-                  <strong>{rec.type}</strong>: {rec.reason}
-                </div>
-                <button
-                  className="ml-4 px-3 py-1 bg-green-600 text-white rounded text-sm"
-                  onClick={() => handleGenerate(rec.type)}
-                  disabled={generateLoading && selectedType === rec.type}
-                >
-                  {generateLoading && selectedType === rec.type ? 'Generating…' : 'Generate Schema'}
-                </button>
-              </li>
+      {/* Recommendations */}
+      {recommendations.length>0 && (
+        <div style={{ marginBottom:'1rem' }}>
+          <h2 style={{ fontSize:'1.25rem', marginBottom:'0.5rem' }}>Select a schema type:</h2>
+          <div style={{ display:'flex', flexWrap:'wrap' }}>
+            {recommendations.map(rec => (
+              <button
+                key={rec.type}
+                type="button"
+                onClick={()=>setSelectedType(selectedType===rec.type?'':rec.type)}
+                style={{ backgroundColor:selectedType===rec.type?'#1D4ED8':'#fff', color:selectedType===rec.type?'#fff':'#000', border:'1px solid #ccc', borderRadius:'4px', padding:'0.5rem 1rem', margin:'0.25rem', cursor:'pointer' }}
+              >{rec.type}</button>
             ))}
-          </ul>
+          </div>
+          <button type="button" onClick={handleGenerate} disabled={loadingGenerate} style={{ padding:'0.5rem 1rem', backgroundColor:'#16A34A', color:'#fff', border:'none', borderRadius:'4px', cursor:'pointer', marginTop:'0.5rem' }}>
+            {loadingGenerate?'Generating…':'Generate JSON-LD'}
+          </button>
         </div>
       )}
 
-      {schemaResult && (
-        <div className="p-4 border rounded bg-gray-50">
-          <h2 className="text-lg font-semibold mb-2">Generated Schema ({selectedType})</h2>
-          <pre className="whitespace-pre-wrap text-sm">
-            {JSON.stringify(schemaResult, null, 2)}
+      {/* JSON-LD Output */}
+      {generatedJsonLd && (
+        <div>
+          <h2 style={{ fontSize:'1.25rem', marginBottom:'0.5rem' }}>Generated JSON-LD:</h2>
+          <pre style={{ backgroundColor:'#F3F4F6', padding:'1rem', borderRadius:'4px', whiteSpace:'pre', overflowX:'auto', fontFamily:'monospace' }}>
+            {'<script type="application/ld+json">'}
+            {'\n'}
+            {JSON.stringify(generatedJsonLd, null, 2)}
+            {'\n'}
+            {'</script>'}
           </pre>
+          <button type="button" onClick={()=>{
+            const script = `<script type=\"application/ld+json\">\n${JSON.stringify(generatedJsonLd, null, 2)}\n</script>`
+            navigator.clipboard.writeText(script).then(()=>alert('Copied!')).catch(()=>alert('Copy failed'))
+          }} style={{ marginTop:'0.5rem', padding:'0.5rem 1rem', backgroundColor:'#3B82F6', color:'#fff', border:'none', borderRadius:'4px', cursor:'pointer' }}>
+            Copy to Clipboard
+          </button>
         </div>
       )}
     </div>
-  );
+  )
 }
